@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shoxjahon Restaurant - Premium Service</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;600;700&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    
+    <!-- QR Code Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getFirestore, doc, setDoc, getDoc, onSnapshot, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+
+        const firebaseConfig = JSON.parse(__firebase_config);
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'shoxjahon-rest';
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+
+        window.db = db;
+        window.auth = auth;
+        window.appId = appId;
+        window.firestoreUtils = { doc, setDoc, getDoc, onSnapshot, collection };
+        window.firebaseAuthUtils = { signInAnonymously, onAuthStateChanged, signInWithCustomToken };
+    </script>
+
+    <style>
+        body {
+            font-family: 'Montserrat', sans-serif;
+            background-color: #0f1115;
+            color: #e5e7eb;
+            scroll-behavior: smooth;
+        }
+        .font-serif { font-family: 'Playfair Display', serif; }
+        .gold-gradient {
+            background: linear-gradient(135deg, #d4af37 0%, #f9d976 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .card-glass {
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        .card-glass:hover {
+            transform: translateY(-8px);
+            border-color: rgba(212, 175, 55, 0.5);
+            box-shadow: 0 15px 35px rgba(0,0,0,0.6);
+        }
+        .cart-badge {
+            position: absolute;
+            top: -8px;
+            right: -8px;
+            background: #d4af37;
+            color: black;
+            font-size: 10px;
+            font-weight: bold;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        #cart-panel {
+            transform: translateX(100%);
+            transition: transform 0.4s ease-in-out;
+        }
+        #cart-panel.open { transform: translateX(0); }
+        .category-btn.active {
+            background: #d4af37;
+            color: black;
+        }
+        
+        .status-step {
+            position: relative;
+            padding-left: 30px;
+            border-left: 2px solid rgba(255,255,255,0.1);
+            padding-bottom: 20px;
+        }
+        .status-step.active { border-left-color: #d4af37; }
+        .status-step::before {
+            content: '';
+            position: absolute;
+            left: -7px;
+            top: 0;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #333;
+        }
+        .status-step.active::before {
+            background: #d4af37;
+            box-shadow: 0 0 10px #d4af37;
+        }
+
+        #product-modal, #qr-modal {
+            display: none;
+            background: rgba(0,0,0,0.85);
+            backdrop-filter: blur(10px);
+        }
+
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+        #qrcode {
+            background: white;
+            padding: 20px;
+            border-radius: 20px;
+            display: inline-block;
+        }
+        #qrcode img {
+            margin: auto;
+        }
+    </style>
+</head>
+<body class="min-h-screen">
+
+    <!-- Navigation -->
+    <nav class="sticky top-0 z-50 bg-[#0f1115]/90 backdrop-blur-lg border-b border-white/5 py-4 px-6 flex justify-between items-center">
+        <div class="text-xl font-serif gold-gradient">Shoxjahon</div>
+        
+        <div class="flex items-center gap-4">
+            <button onclick="showQRCode()" class="text-white hover:text-yellow-500 transition text-sm flex items-center gap-2 border border-white/10 px-3 py-1 rounded-full">
+                <i class="fa-solid fa-qrcode"></i> <span>QR</span>
+            </button>
+            <div class="flex gap-3 text-[10px] md:text-xs font-semibold tracking-widest uppercase border-r border-white/10 pr-4">
+                <button onclick="setLang('ru')" id="lang-ru" class="hover:text-yellow-500 transition">RU</button>
+                <button onclick="setLang('uz')" id="lang-uz" class="hover:text-yellow-500 transition">UZ</button>
+            </div>
+            
+            <button onclick="toggleCart()" class="relative p-2 text-white hover:text-yellow-500 transition">
+                <i class="fa-solid fa-shopping-bag text-2xl"></i>
+                <span id="cart-count" class="cart-badge">0</span>
+            </button>
+        </div>
+    </nav>
+
+    <!-- Hero Banner -->
+    <header class="relative h-[40vh] md:h-[60vh] flex items-center justify-center overflow-hidden">
+        <div class="absolute inset-0 bg-black/60 z-10"></div>
+        <img src="https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?w=1600" class="absolute inset-0 w-full h-full object-cover scale-105" alt="Background">
+        <div class="relative z-20 text-center px-4">
+            <h1 class="text-5xl md:text-8xl font-serif gold-gradient mb-4">Luxury Dining</h1>
+            <p id="hero-subtitle" class="text-gray-300 tracking-[0.3em] uppercase text-xs md:text-base">Премиальный сервис в вашем номере</p>
+        </div>
+    </header>
+
+    <!-- Categories -->
+    <div class="max-w-6xl mx-auto px-4 mt-8 flex gap-4 overflow-x-auto pb-4 no-scrollbar">
+        <button onclick="filterCategory('all')" id="cat-all" class="category-btn active px-6 py-2 rounded-full border border-white/10 whitespace-nowrap text-sm transition-all">Все меню</button>
+        <button onclick="filterCategory('lunch')" id="cat-lunch" class="category-btn px-6 py-2 rounded-full border border-white/10 whitespace-nowrap text-sm transition-all">Обеды</button>
+        <button onclick="filterCategory('dinner')" id="cat-dinner" class="category-btn px-6 py-2 rounded-full border border-white/10 whitespace-nowrap text-sm transition-all">Ужины</button>
+        <button onclick="filterCategory('dessert')" id="cat-dessert" class="category-btn px-6 py-2 rounded-full border border-white/10 whitespace-nowrap text-sm transition-all">Десерты</button>
+        <button onclick="filterCategory('drinks')" id="cat-drinks" class="category-btn px-6 py-2 rounded-full border border-white/10 whitespace-nowrap text-sm transition-all">Напитки</button>
+    </div>
+
+    <!-- Menu Grid -->
+    <main class="max-w-6xl mx-auto px-4 py-8">
+        <div id="menu-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8"></div>
+    </main>
+
+    <!-- Product Modal -->
+    <div id="product-modal" class="fixed inset-0 z-[100] flex items-center justify-center p-4">
+        <div class="bg-[#16191e] w-full max-w-2xl rounded-[2.5rem] overflow-hidden border border-white/10 relative shadow-2xl">
+            <button onclick="closeModal()" class="absolute top-6 right-6 z-10 bg-black/50 w-10 h-10 rounded-full text-white flex items-center justify-center hover:bg-yellow-500 transition">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+            <div class="flex flex-col md:flex-row">
+                <div class="md:w-1/2 h-56 md:h-auto"><img id="modal-img" src="" class="w-full h-full object-cover"></div>
+                <div class="md:w-1/2 p-8 flex flex-col justify-between">
+                    <div>
+                        <h3 id="modal-name" class="text-2xl md:text-3xl font-serif gold-gradient mb-2"></h3>
+                        <p id="modal-desc" class="text-gray-400 text-sm mb-4 leading-relaxed"></p>
+                        <div class="text-2xl font-bold text-yellow-500 mb-6" id="modal-price"></div>
+                    </div>
+                    <div class="flex flex-col gap-4">
+                        <div class="flex items-center justify-center gap-6 bg-white/5 p-3 rounded-2xl">
+                            <button onclick="updateModalQty(-1)" class="w-10 h-10 rounded-xl bg-white/10 hover:bg-yellow-500 transition"><i class="fa-solid fa-minus"></i></button>
+                            <span id="modal-qty" class="text-xl font-bold w-8 text-center text-white">1</span>
+                            <button onclick="updateModalQty(1)" class="w-10 h-10 rounded-xl bg-white/10 hover:bg-yellow-500 transition"><i class="fa-solid fa-plus"></i></button>
+                        </div>
+                        <button onclick="confirmAddToCart()" class="w-full bg-gradient-to-r from-[#d4af37] to-[#f9d976] py-4 rounded-2xl font-bold text-black"><i class="fa-solid fa-cart-plus mr-2"></i> <span id="modal-add-btn"></span></button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- QR Modal -->
+    <div id="qr-modal" class="fixed inset-0 z-[101] flex items-center justify-center p-4">
+        <div class="bg-[#16191e] p-8 rounded-[2.5rem] border border-white/10 text-center max-w-sm w-full">
+            <h3 class="text-xl font-serif gold-gradient mb-6">QR-меню ресторана</h3>
+            <div class="mb-6 flex justify-center">
+                <div id="qrcode"></div>
+            </div>
+            <p class="text-xs text-gray-400 mb-6">Отсканируйте код для доступа к электронному меню</p>
+            <button onclick="closeQR()" class="w-full py-3 bg-white/5 rounded-xl hover:bg-yellow-500 hover:text-black transition font-bold">Закрыть</button>
+        </div>
+    </div>
+
+    <!-- Cart Panel -->
+    <div id="cart-panel" class="fixed top-0 right-0 h-full w-full md:w-[400px] bg-[#16191e] z-[60] shadow-2xl border-l border-white/5 p-6 flex flex-col">
+        <div class="flex justify-between items-center mb-8">
+            <h2 id="cart-title" class="text-2xl font-serif text-white">Ваш выбор</h2>
+            <button onclick="toggleCart()" class="text-gray-400 hover:text-white"><i class="fa-solid fa-xmark text-2xl"></i></button>
+        </div>
+
+        <div id="cart-main-ui" class="flex flex-col flex-1 overflow-hidden">
+            <div id="cart-items" class="flex-1 overflow-y-auto space-y-4 mb-6 pr-2"></div>
+            <div class="border-t border-white/5 pt-6 space-y-4">
+                <div class="flex justify-between text-lg font-bold">
+                    <span id="total-label">Итого:</span>
+                    <span id="total-price" class="text-yellow-500">$0</span>
+                </div>
+                <div class="space-y-2">
+                    <input type="text" id="order-room" placeholder="Номер апартаментов" class="w-full bg-white/5 border border-white/10 p-3 rounded-xl outline-none focus:border-yellow-500 text-white">
+                    <input type="text" id="order-phone" placeholder="Контактный телефон" class="w-full bg-white/5 border border-white/10 p-3 rounded-xl outline-none focus:border-yellow-500 text-white">
+                    <textarea id="order-comment" placeholder="Пожелания" class="w-full bg-white/5 border border-white/10 p-3 rounded-xl outline-none focus:border-yellow-500 text-white h-16 resize-none"></textarea>
+                </div>
+                <button onclick="sendOrder()" id="send-btn" class="w-full bg-gradient-to-r from-[#d4af37] to-[#f9d976] py-4 rounded-xl font-bold text-black transition-all flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-bell"></i> <span id="confirm-btn-text"></span>
+                </button>
+            </div>
+        </div>
+
+        <div id="tracking-ui" class="hidden flex-1 flex flex-col">
+            <div class="bg-white/5 p-6 rounded-3xl mb-8 text-center border border-white/10">
+                <div class="text-4xl mb-2">🛎️</div>
+                <h3 id="tracking-status-title" class="font-bold text-xl gold-gradient mb-1"></h3>
+                <p id="tracking-status-desc" class="text-gray-400 text-sm"></p>
+            </div>
+            <div class="space-y-0 flex-1">
+                <div id="step-1" class="status-step active"><h4 class="font-bold text-sm">Подтвержден</h4><p class="text-xs text-gray-500" id="step1-desc"></p></div>
+                <div id="step-2" class="status-step"><h4 class="font-bold text-sm">Приготовление</h4><p class="text-xs text-gray-500" id="step2-desc"></p></div>
+                <div id="step-3" class="status-step"><h4 class="font-bold text-sm">Подача</h4><p class="text-xs text-gray-500" id="step3-desc"></p></div>
+                <div id="step-4" class="status-step"><h4 class="font-bold text-sm">Выполнено</h4><p class="text-xs text-gray-500" id="step4-desc"></p></div>
+            </div>
+            <button onclick="resetOrder()" class="text-xs text-gray-500 hover:text-white transition py-4 underline">Вернуться к меню</button>
+        </div>
+    </div>
+
+    <div id="toast" class="fixed bottom-10 left-1/2 -translate-x-1/2 z-[110] hidden px-6 py-3 rounded-full font-bold shadow-2xl animate-bounce"></div>
+
+    <script>
+        const botToken = "8239778303:AAHAQEcIIP9TM-RrZzr-Le8Vnd5IYGFWuVk"; 
+        const MY_USER_ID = "1350897608";
+
+        let currentLang = 'ru';
+        let cart = [];
+        let orderTrackingActive = false;
+        let selectedProduct = null;
+        let modalQty = 1;
+        let currentOrderMsgId = null;
+        let lastUpdateId = 0;
+        let userUid = null;
+        let trackingUnsubscribe = null;
+        let qrCodeInstance = null;
+
+        const uiStrings = {
+            ru: {
+                heroSubtitle: "Премиальный сервис в вашем номере",
+                catAll: "Все меню", catLunch: "Обеды", catDinner: "Ужины", catDessert: "Десерты", catDrinks: "Напитки",
+                cartTitle: "Ваш выбор", total: "Сумма:",
+                placeholderRoom: "Номер апартаментов", placeholderPhone: "Контактный телефон",
+                placeholderComment: "Пожелания", confirmBtn: "Заказать сервис",
+                emptyCart: "Меню выбора пусто", addBtn: "Выбрать", modalAdd: "Добавить",
+                orderTitle: "🛎️ НОВЫЙ ЗАПРОС СЕРВИСА", placeLabel: "📍 Локация:", phoneLabel: "📞 Тел:",
+                commentLabel: "💬 Пожелания:", itemsLabel: "🍽️ Позиции:", totalLabel: "💰 Итоговая сумма:",
+                noComment: "Нет", toastAdded: "Добавлено: ", toastEmpty: "Выбор пуст",
+                toastFields: "Пожалуйста, заполните данные", toastSent: "Запрос отправлен!",
+                toastError: "Сбой связи", trackingTitle: "Статус обслуживания",
+                step1: "Подтвержден", step1desc: "Служба сервиса приняла ваш заказ",
+                step2: "Приготовление", step2desc: "Шеф-повар приступил к выполнению",
+                step3: "Подача", step3desc: "Сотрудник Room Service направляется к вам",
+                step4: "Выполнено", step4desc: "Желаем вам приятного отдыха!",
+                tgInstructions: "\n\n<i>Ответьте цифрой (2, 3 или 4)</i>"
+            },
+            uz: {
+                heroSubtitle: "Sizning xonangizda oliy darajadagi servis",
+                catAll: "Barcha menyu", catLunch: "Tushlik", catDinner: "Kechki ovqat", catDessert: "Desertlar", catDrinks: "Ichimliklar",
+                cartTitle: "Sizning tanlovingiz", total: "Jami:",
+                placeholderRoom: "Xona raqami", placeholderPhone: "Bog'lanish uchun tel",
+                placeholderComment: "Tilaklar", confirmBtn: "Buyurtma berish",
+                emptyCart: "Tanlov bo'sh", addBtn: "Tanlash", modalAdd: "Qo'shish",
+                orderTitle: "🛎️ YANGI SERVIS SO'ROVI", placeLabel: "📍 Manzil:", phoneLabel: "📞 Tel:",
+                commentLabel: "💬 Tilaklar:", itemsLabel: "🍽️ Taomlar:", totalLabel: "💰 Jami:",
+                noComment: "Yo'q", toastAdded: "Qo'shildi: ", toastEmpty: "Tanlov bo'sh",
+                toastFields: "Ma'lumotlarni to'ldiring", toastSent: "Yuborildi!",
+                toastError: "Aloqa xatosi", trackingTitle: "Xizmat holati",
+                step1: "Tasdiqlandi", step1desc: "Servis xizmati qabul qildi",
+                step2: "Tayyorlanmoqda", step2desc: "Oshpaz ishga tushdi",
+                step3: "Xizmat ko'rsatish", step3desc: "Xodim yo'lda",
+                step4: "Bajarildi", step4desc: "Yoqimli hordiq!",
+                tgInstructions: "\n\n<i>Raqam bilan javob bering (2, 3 yoki 4)</i>"
+            }
+        };
+
+        const menuData = {
+            // Обеды (3 позиции)
+            lunch1: { id: 'lunch1', cat: 'lunch', name: {ru: 'Чайханский Плов', uz: 'Choyxona Palov'}, price: 8, img: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=500', desc: {ru: 'Классический плов по-самаркандски с нежной говядиной.', uz: 'Yumshoq go`sht bilan klassik Samarqand palovi.'} },
+            lunch2: { id: 'lunch2', cat: 'lunch', name: {ru: 'Шурпа из баранины', uz: 'Qo`y go`shtli Sho`rva'}, price: 7, img: 'https://images.unsplash.com/photo-1547592166-23ac45744acd?w=500', desc: {ru: 'Наваристый мясной бульон с овощами и специями.', uz: 'Sabzavot va ziravorlar bilan boyitilgan go`shtli sho`rva.'} },
+            lunch3: { id: 'lunch3', cat: 'lunch', name: {ru: 'Лагман', uz: 'Lag`mon'}, price: 9, img: 'https://images.unsplash.com/photo-1585032226651-759b368d7246?w=500', desc: {ru: 'Традиционная лапша с мясом и пряным соусом.', uz: 'An`anaviy go`shtli va ziravorli qayla bilan lag`mon.'} },
+            
+            // Ужины (3 позиции)
+            dinner1: { id: 'dinner1', cat: 'dinner', name: {ru: 'Манты', uz: 'Manti'}, price: 10, img: 'https://images.unsplash.com/photo-1534422298391-e4f8c172dddb?w=500', desc: {ru: 'Паровые манты с рубленым мясом.', uz: 'Qiymali go`sht bilan tayyorlangan manti.'} },
+            dinner2: { id: 'dinner2', cat: 'dinner', name: {ru: 'Стейк Рибай', uz: 'Ribay Steyk'}, price: 25, img: 'https://images.unsplash.com/photo-1600891964599-f61ba0e24092?w=500', desc: {ru: 'Премиальная говядина, прожаренная на углях.', uz: 'Ko`mirda pishirilgan oliy navli mol go`shti.'} },
+            dinner3: { id: 'dinner3', cat: 'dinner', name: {ru: 'Шашлык Ассорти', uz: 'Kabob Assorti'}, price: 18, img: 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=500', desc: {ru: 'Набор из различных видов нежного шашлыка.', uz: 'Turli xildagi yumshoq kaboblar to`plami.'} },
+
+            // Десерты (3 позиции)
+            dessert1: { id: 'dessert1', cat: 'dessert', name: {ru: 'Пахлава', uz: 'Pahlava'}, price: 5, img: 'https://images.unsplash.com/photo-1519676867240-f03562e64548?w=500', desc: {ru: 'Слоеное тесто с медом и орехами.', uz: 'Asal va yong`oq bilan qatlamli xamir.'} },
+            dessert2: { id: 'dessert2', cat: 'dessert', name: {ru: 'Чизкейк', uz: 'Chizkeyk'}, price: 7, img: 'https://images.unsplash.com/photo-1533134242443-d4fd215305ad?w=500', desc: {ru: 'Классический сливочный десерт с ягодным соусом.', uz: 'Rezavor qayla bilan klassik qaymoqli desert.'} },
+            dessert3: { id: 'dessert3', cat: 'dessert', name: {ru: 'Мороженое', uz: 'Muzqaymoq'}, price: 4, img: 'https://images.unsplash.com/photo-1501443762994-82bd5dace89a?w=500', desc: {ru: 'Три шарика домашнего мороженого.', uz: 'Uch xil rangdagi uy muzqaymog`i.'} },
+            
+            // Напитки (3 позиции)
+            drink1: { id: 'drink1', cat: 'drinks', name: {ru: 'Лимонный Чай', uz: 'Limonli Choy'}, price: 2, img: 'https://images.unsplash.com/photo-1576092768241-dec231879fc3?w=500', desc: {ru: 'Черный чай с лимоном и медом.', uz: 'Limon va asal qo`shilgan qora choy.'} },
+            drink2: { id: 'drink2', cat: 'drinks', name: {ru: 'Кофе Капучино', uz: 'Kapuchino kofesi'}, price: 4, img: 'https://images.unsplash.com/photo-1572442388796-11668a67e53d?w=500', desc: {ru: 'Классический кофе с молочной пенкой.', uz: 'Sutli ko`pik bilan klassik kofe.'} },
+            drink3: { id: 'drink3', cat: 'drinks', name: {ru: 'Свежий Сок', uz: 'Yangi Sharbat'}, price: 5, img: 'https://images.unsplash.com/photo-1621506289937-a8e4df240d0b?w=500', desc: {ru: 'Апельсиновый фреш прямо из под пресса.', uz: 'Yangi siqilgan apelsin sharbati.'} }
+        };
+
+        // --- QR Logic ---
+        function showQRCode() {
+            const qrContainer = document.getElementById("qrcode");
+            qrContainer.innerHTML = "";
+            const url = window.location.href;
+            try {
+                qrCodeInstance = new QRCode(qrContainer, {
+                    text: url,
+                    width: 256,
+                    height: 256,
+                    colorDark : "#000000",
+                    colorLight : "#ffffff",
+                    correctLevel : QRCode.CorrectLevel.H
+                });
+                document.getElementById('qr-modal').style.display = 'flex';
+            } catch (err) { console.error(err); }
+        }
+
+        function closeQR() { document.getElementById('qr-modal').style.display = 'none'; }
+
+        // --- Firebase Logic ---
+        async function initApp() {
+            const checkAuth = setInterval(async () => {
+                if (window.auth) {
+                    clearInterval(checkAuth);
+                    const { signInAnonymously, onAuthStateChanged, signInWithCustomToken } = window.firebaseAuthUtils;
+                    const initAuth = async () => {
+                        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                            await signInWithCustomToken(window.auth, __initial_auth_token);
+                        } else {
+                            await signInAnonymously(window.auth);
+                        }
+                    };
+                    await initAuth();
+                    onAuthStateChanged(window.auth, (user) => {
+                        if (user) {
+                            userUid = user.uid;
+                            checkActiveOrder();
+                        }
+                    });
+                }
+            }, 500);
+        }
+
+        function getOrderDocRef() {
+            const { doc } = window.firestoreUtils;
+            return doc(window.db, 'artifacts', window.appId, 'users', userUid, 'orders', 'current');
+        }
+
+        async function checkActiveOrder() {
+            if (!userUid) return;
+            const { getDoc } = window.firestoreUtils;
+            const orderRef = getOrderDocRef();
+            try {
+                const snap = await getDoc(orderRef);
+                if (snap.exists() && snap.data().active) {
+                    currentOrderMsgId = snap.data().msgId;
+                    startTracking();
+                }
+            } catch (e) { console.error(e); }
+        }
+
+        async function saveOrderToCloud(msgId) {
+            if (!userUid) return;
+            const { setDoc } = window.firestoreUtils;
+            const orderRef = getOrderDocRef();
+            await setDoc(orderRef, { active: true, msgId: msgId, status: 1, timestamp: Date.now() });
+        }
+
+        function startTracking() {
+            if (!userUid) return;
+            orderTrackingActive = true;
+            document.getElementById('cart-main-ui').classList.add('hidden');
+            document.getElementById('tracking-ui').classList.remove('hidden');
+            const { onSnapshot } = window.firestoreUtils;
+            const orderRef = getOrderDocRef();
+            trackingUnsubscribe = onSnapshot(orderRef, (doc) => {
+                if (doc.exists()) {
+                    const data = doc.data();
+                    if (data.status) setTrackingStep(data.status);
+                    if (data.active === false) resetOrderLocal();
+                }
+            }, (error) => console.error(error));
+            initLongPolling();
+        }
+
+        async function initLongPolling() {
+            if (!orderTrackingActive) return;
+            try {
+                const response = await fetch(`https://api.telegram.org/bot${botToken}/getUpdates?offset=${lastUpdateId + 1}&timeout=30`);
+                const data = await response.json();
+                if (data.ok && data.result.length > 0) {
+                    for (const update of data.result) {
+                        lastUpdateId = update.update_id;
+                        const msg = update.message;
+                        if (msg?.reply_to_message?.message_id === currentOrderMsgId) {
+                            const step = parseInt(msg.text.trim());
+                            if ([2,3,4].includes(step)) updateOrderStatus(step);
+                        }
+                    }
+                }
+            } catch (e) {}
+            if (orderTrackingActive) setTimeout(initLongPolling, 2000);
+        }
+
+        async function updateOrderStatus(step) {
+            if (!userUid) return;
+            const { setDoc } = window.firestoreUtils;
+            const orderRef = getOrderDocRef();
+            await setDoc(orderRef, { status: step }, { merge: true });
+        }
+
+        async function sendOrder() {
+            const room = document.getElementById('order-room').value;
+            const phone = document.getElementById('order-phone').value;
+            const comment = document.getElementById('order-comment').value || "Нет";
+            const t = uiStrings[currentLang];
+            if(!cart.length || !room || !phone) return showToast(t.toastFields, "bg-red-600");
+            const btn = document.getElementById('send-btn');
+            btn.disabled = true;
+            let itemsText = "";
+            let total = 0;
+            cart.forEach(item => {
+                itemsText += `- ${item.name[currentLang]} x${item.qty} ($${item.price * item.qty})\n`;
+                total += item.price * item.qty;
+            });
+            const text = `<b>${t.orderTitle}</b>\n\n<b>Локация:</b> ${room}\n<b>Тел:</b> ${phone}\n<b>UID:</b> <code>${userUid}</code>\n<b>Пожелания:</b> ${comment}\n\n<b>Заказ:</b>\n${itemsText}\n<b>Итого: $${total}</b>\n\n${t.tgInstructions}`;
+            try {
+                const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ chat_id: MY_USER_ID, text, parse_mode: 'HTML' })
+                });
+                const data = await res.json();
+                if(data.ok) {
+                    currentOrderMsgId = data.result.message_id;
+                    await saveOrderToCloud(currentOrderMsgId);
+                    startTracking();
+                    showToast(t.toastSent, "bg-green-600");
+                }
+            } catch (e) { showToast(t.toastError, "bg-red-600"); }
+            btn.disabled = false;
+        }
+
+        function setTrackingStep(step) {
+            const t = uiStrings[currentLang];
+            document.getElementById('tracking-status-title').innerText = t['step' + step];
+            document.getElementById('tracking-status-desc').innerText = t['step' + step + 'desc'];
+            for(let i=1; i<=4; i++) {
+                const el = document.getElementById('step-' + i);
+                if(i <= step) el.classList.add('active'); else el.classList.remove('active');
+            }
+        }
+
+        function resetOrderLocal() {
+            if (trackingUnsubscribe) trackingUnsubscribe();
+            orderTrackingActive = false;
+            cart = [];
+            document.getElementById('tracking-ui').classList.add('hidden');
+            document.getElementById('cart-main-ui').classList.remove('hidden');
+            updateCartUI();
+        }
+
+        async function resetOrder() {
+            if (!userUid) return;
+            const { setDoc } = window.firestoreUtils;
+            const orderRef = getOrderDocRef();
+            await setDoc(orderRef, { active: false }, { merge: true });
+            resetOrderLocal();
+        }
+
+        // --- UI Helpers ---
+        function renderMenu(filter = 'all') {
+            const grid = document.getElementById('menu-grid');
+            grid.innerHTML = '';
+            Object.values(menuData).forEach(item => {
+                if(filter !== 'all' && item.cat !== filter) return;
+                grid.innerHTML += `<div class="card-glass p-4 rounded-[2rem] flex flex-col cursor-pointer" onclick="openProductModal('${item.id}')">
+                    <img src="${item.img}" class="h-48 w-full object-cover rounded-2xl mb-4">
+                    <div class="flex justify-between font-bold text-white"><span>${item.name[currentLang]}</span><span>$${item.price}</span></div>
+                    <button class="mt-4 py-2 bg-white/5 text-gray-300 rounded-xl hover:bg-yellow-500 hover:text-black transition">${uiStrings[currentLang].addBtn}</button>
+                </div>`;
+            });
+        }
+
+        function filterCategory(cat) {
+            document.querySelectorAll('.category-btn').forEach(b => b.classList.remove('active'));
+            const target = document.getElementById('cat-' + cat);
+            if (target) target.classList.add('active');
+            renderMenu(cat);
+        }
+
+        function openProductModal(id) {
+            selectedProduct = menuData[id];
+            modalQty = 1;
+            document.getElementById('modal-img').src = selectedProduct.img;
+            document.getElementById('modal-name').innerText = selectedProduct.name[currentLang];
+            document.getElementById('modal-desc').innerText = selectedProduct.desc[currentLang];
+            document.getElementById('modal-price').innerText = '$' + selectedProduct.price;
+            document.getElementById('modal-qty').innerText = modalQty;
+            document.getElementById('modal-add-btn').innerText = uiStrings[currentLang].modalAdd;
+            document.getElementById('product-modal').style.display = 'flex';
+        }
+
+        function closeModal() { document.getElementById('product-modal').style.display = 'none'; }
+        function updateModalQty(d) { modalQty = Math.max(1, modalQty + d); document.getElementById('modal-qty').innerText = modalQty; }
+        
+        function confirmAddToCart() {
+            const existing = cart.find(i => i.id === selectedProduct.id);
+            if(existing) existing.qty += modalQty; else cart.push({...selectedProduct, qty: modalQty});
+            closeModal(); updateCartUI(); showToast(uiStrings[currentLang].toastAdded + selectedProduct.name[currentLang], "bg-yellow-500 text-black");
+        }
+        
+        function toggleCart() { document.getElementById('cart-panel').classList.toggle('open'); }
+        
+        function updateCartUI() {
+            const list = document.getElementById('cart-items');
+            list.innerHTML = cart.length ? '' : `<p class="text-center mt-10 text-gray-500">${uiStrings[currentLang].emptyCart}</p>`;
+            let sum = 0;
+            cart.forEach(item => {
+                sum += item.price * item.qty;
+                list.innerHTML += `<div class="bg-white/5 p-4 rounded-2xl flex justify-between items-center border border-white/5">
+                    <div>
+                        <div class="font-bold text-white">${item.name[currentLang]}</div>
+                        <div class="text-xs text-gray-500">Кол-во: ${item.qty}</div>
+                    </div>
+                    <div class="font-bold text-yellow-500">$${item.price * item.qty}</div>
+                </div>`;
+            });
+            document.getElementById('total-price').innerText = '$' + sum;
+            document.getElementById('cart-count').innerText = cart.length;
+        }
+
+        function setLang(l) {
+            currentLang = l;
+            const t = uiStrings[l];
+            if (!t) return;
+            document.getElementById('hero-subtitle').innerText = t.heroSubtitle;
+            document.getElementById('cat-all').innerText = t.catAll;
+            document.getElementById('cat-lunch').innerText = t.catLunch;
+            document.getElementById('cat-dinner').innerText = t.catDinner;
+            document.getElementById('cat-dessert').innerText = t.catDessert;
+            document.getElementById('cat-drinks').innerText = t.catDrinks;
+            document.getElementById('cart-title').innerText = t.cartTitle;
+            document.getElementById('total-label').innerText = t.total;
+            document.getElementById('order-room').placeholder = t.placeholderRoom;
+            document.getElementById('order-phone').placeholder = t.placeholderPhone;
+            document.getElementById('order-comment').placeholder = t.placeholderComment;
+            document.getElementById('confirm-btn-text').innerText = t.confirmBtn;
+            renderMenu(); updateCartUI();
+        }
+
+        function showToast(m, c) {
+            const t = document.getElementById('toast');
+            t.innerText = m; t.className = `fixed bottom-10 left-1/2 -translate-x-1/2 z-[110] px-6 py-3 rounded-full text-white font-bold shadow-2xl animate-bounce ${c}`;
+            t.style.display = 'block'; setTimeout(() => t.style.display = 'none', 3000);
+        }
+
+        window.onload = () => { initApp(); setLang('ru'); };
+    </script>
+</body>
+</html>
